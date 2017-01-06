@@ -94,22 +94,32 @@ void UMyScutHttpComponent::OnResponseReceived(FHttpRequestPtr HttpRequest, FHttp
 	void* pContent = (void*)HttpResponse->GetContent().GetData();
 	int len = HttpResponse->GetContentLength();
 
+	FBufferReader ar(pContent, len, false);
+	int buffersize = MyScut::ReadInt(ar);
+
 	// 如果服务器发过来的是压缩数据，那么先解压缩
 	TArray<uint8> out;
-	if (HttpResponse->GetHeader(TEXT("Content-Encoding")) == TEXT("gzip"))
+	uint8* pdata = (uint8*)pContent;
+	//if (HttpResponse->GetHeader(TEXT("Content-Encoding")) == TEXT("gzip"))
+	if (pdata[4] == 0x1F && pdata[5] == 0x8B && pdata[6] == 0x08 && pdata[7] == 0x00)
 	{
-		MyScut::DecompressNetData(pContent, len, out);
+		pdata += sizeof(int);
+		MyScut::DecompressNetData((void*)pdata, buffersize, out);
 		pContent = out.GetData();
 		len = out.Num();
+		ar = FBufferReader(pContent, len, false);
+		buffersize = MyScut::ReadInt(ar);
+	}
+	else
+	{
+		len = buffersize;
+		buffersize = MyScut::ReadInt(ar);
 	}
 
 	// 如果数据非法，那么直接返回
 	if (len == 0)
 		return;
 
-	FBufferReader ar(pContent, len, false);
-
-	int buffersize = MyScut::ReadInt(ar);
 	Debug(FString::Printf(TEXT("response, content size=%d, %d"), HttpResponse->GetContentLength(), buffersize));
 
 	int result = MyScut::ReadInt(ar);
